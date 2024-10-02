@@ -1,7 +1,8 @@
 package main
 
 import (
-	"cicd_pipeline_in_go/github_commits"
+	"cicd_pipeline_in_go/docker"
+	"cicd_pipeline_in_go/github"
 	"fmt"
 	"os"
 
@@ -17,6 +18,7 @@ var buildCmd = &cobra.Command{
 	Use:   "build",
 	Short: "Triggert build based on new commits",
 	Run: func(cmd *cobra.Command, args []string) {
+		// Github
 		owner := os.Getenv("GITHUB_OWNER")
 		repo := os.Getenv("GITHUB_REPO")
 		token := os.Getenv("GITHUB_TOKEN")
@@ -25,7 +27,7 @@ var buildCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		commits, err := github_commits.GetCommits(owner, repo, token)
+		commits, err := github.GetCommits(owner, repo, token)
 		if err != nil {
 			fmt.Println("Error fetching commits: ", err)
 			os.Exit(1)
@@ -34,6 +36,48 @@ var buildCmd = &cobra.Command{
 		fmt.Printf("Fetched %d commits from the reposotory %s/%s: \n", len(commits), owner, repo)
 		for _, commit := range commits {
 			fmt.Printf("- %s: %s\n", *commit.SHA, *commit.Commit.Message)
+		}
+
+		cloneDir := os.Getenv("CLONE_DIR")
+		if cloneDir == "" {
+			cloneDir = "repoTmpDir"
+		}
+		fmt.Println("Cloning repository...")
+		err = github.CloneRepo(owner, repo, token, cloneDir)
+		if err != nil {
+			fmt.Println("Error cloning repository: ", err)
+			os.Exit(1)
+		}
+
+		// Docker
+		fmt.Println("Building Docker image...")
+		dockerfilePath := os.Getenv("DOCKERFILE_PATH")
+		imageName := os.Getenv("IMAGE_NAME")
+		if dockerfilePath == "" {
+			dockerfilePath = fmt.Sprintf("%s/Dockerfile", cloneDir)
+		}
+		if imageName == "" {
+			fmt.Println("Please set IMAGE_NAME in format <image>:<tag>")
+			os.Exit(1)
+		}
+
+		err = docker.BuildDockerImage(dockerfilePath, imageName)
+		if err != nil {
+			fmt.Println("Error building Docker image: ", err)
+			os.Exit(1)
+		}
+
+		fmt.Println("Docker image built successfully!")
+
+		cleanUpRepo := os.Getenv("CLEANUP_REPO")
+		if cleanUpRepo == "true" {
+			fmt.Println("Cleaning up repository...")
+			err = os.RemoveAll(cloneDir)
+			if err != nil {
+				fmt.Println("Error cleaning up repository: ", err)
+				os.Exit(1)
+			}
+			fmt.Println("Repository cleaned up successfully!")
 		}
 	},
 }
