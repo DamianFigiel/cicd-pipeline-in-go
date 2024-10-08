@@ -3,6 +3,7 @@ package main
 import (
 	"cicd_pipeline_in_go/docker"
 	"cicd_pipeline_in_go/github"
+	"cicd_pipeline_in_go/kubernetes"
 	"fmt"
 	"os"
 
@@ -82,8 +83,36 @@ var buildCmd = &cobra.Command{
 	},
 }
 
+var deployCmd = &cobra.Command{
+	Use:   "deploy",
+	Short: "Deploy the Docker image to Kubernetes",
+	Run: func(cmd *cobra.Command, args []string) {
+		namespace := os.Getenv("K8S_NAMESPACE")
+		deploymentName := os.Getenv("K8S_DEPLOYMENT_NAME")
+		newImage := os.Getenv("IMAGE_NAME")
+
+		if namespace == "" || deploymentName == "" || newImage == "" {
+			fmt.Println("Please set K8S_NAMESPACE, K8S_DEPLOYMENT_NAME and IMAGE_NAME")
+			os.Exit(1)
+		}
+
+		clientset, err := kubernetes.GetKubeClient()
+		if err != nil {
+			fmt.Println("Error creating Kubernetes client: ", err)
+			os.Exit(1)
+		}
+
+		err = kubernetes.UpdateDeployment(clientset, namespace, deploymentName, newImage)
+		if err != nil {
+			fmt.Println("Error updating Kubernetes deployment: ", err)
+			os.Exit(1)
+		}
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(buildCmd)
+	rootCmd.AddCommand(deployCmd)
 }
 
 func main() {
